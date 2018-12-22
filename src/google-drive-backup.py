@@ -1,6 +1,6 @@
 # Activate virtual env
 import os
-os.system('/bin/bash --rcfile ..//env/bin/active') # TODO: Make this generic
+os.system('/bin/bash --rcfile ../env/bin/active') # TODO: Make this generic
 # Start process under virtual env
 import os
 
@@ -25,17 +25,14 @@ PROG_MSG = r'''
 
 def build_application_scaffold():
 
-    #TODO: This does not belong here
     # Create application directory in user directory
     if not os.path.exists(GDRIVE_BACKUP_APP_DIR):
         os.mkdir(GDRIVE_BACKUP_APP_DIR)
     
-    #TODO: This does not belong here
     # Create application auth directory in application directory
     if not os.path.exists(GDRIVE_BACKUP_APP_AUTH_DIR):
         os.mkdir(GDRIVE_BACKUP_APP_AUTH_DIR)
 
-    #TODO: This does not belong here    
     # Create application logs directory in application directory
     if not os.path.exists(GDRIVE_BACKUP_APP_LOG_DIR):
         os.mkdir(GDRIVE_BACKUP_APP_LOG_DIR)
