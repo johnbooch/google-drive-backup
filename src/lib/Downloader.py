@@ -2,7 +2,9 @@
 import calendar
 import logging
 import os
-import time
+import re
+import shutil
+import uuid
 
 from oauth2client import client
 from oauth2client.file import Storage
@@ -32,46 +34,13 @@ class Downloader():
     def __init__(self, args):
         self.args = args
         
-        # Setup logging #TODO: This does not belong here
-        self.setupLogging(getattr(logging, self.args.log_level.upper()))
-
+        # TODO: Crednetials should be built by another object and passed in
         # Build Credentials
-        self.log_level_progress("Getting Credentials", logging.INFO)
+        self.logLevelProgess("Getting Credentials", logging.INFO)
         self.buildCredentials(self.args.scope)
-        self.log_level_progress("Validated Credentials", logging.INFO)
+        self.logLevelProgess("Validated Credentials", logging.INFO)
 
-    #TODO: This does not belong here
-    def setupLogging(self, level):
-        r_logger = logging.getLogger()
-        r_logger.setLevel(level)
-    
-        log_file = os.path.join(GDRIVE_BACKUP_APP_LOG_DIR, 'google-drive-backup.log')
-        log_filter = logging.Filter(name=__name__)
-        
-        file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
-        file_handler.setLevel(level)
-        file_handler.addFilter(log_filter)
-    
-        class CustomStreamFilter():
-            def filter(self, record):
-                if record.levelname == 'ERROR' and record.exc_info:
-                    return 0
-                return 1
-    
-        stream_handler = logging.StreamHandler()
-        stream_handler.setLevel('ERROR')
-        stream_handler.addFilter(CustomStreamFilter())
-    
-        file_formatter = logging.Formatter(u'%(asctime)s - %(name)' + u's - %(levelname)8s - %(message)s')
-        stream_formatter = logging.Formatter(u'\r%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    
-        file_handler.setFormatter(file_formatter)
-        stream_handler.setFormatter(stream_formatter)
-    
-        r_logger.addHandler(file_handler)
-        r_logger.addHandler(stream_handler)
-
-
+    #TODO: I don't think credentials should be built by a downloader object. This should be passed in
     def buildCredentials(self, scope):
         # User credential file
         user_token_file = os.path.join(GDRIVE_BACKUP_APP_AUTH_DIR, "drive_python_token_file.json")  #TODO: Make this user specific
@@ -79,11 +48,11 @@ class Downloader():
 
         if not os.path.exists(user_token_file):
             with open(user_token_file, 'w'): pass 
-            self.log_level_progress("Created user token file at: {0}".format(user_token_file), logging.DEBUG)
+            self.logLevelProgess("Created user token file at: {0}".format(user_token_file), logging.DEBUG)
 
         if not os.path.exists(user_token_file):
-            self.log_level_progress("No client secrets file present at {0}. Please run google-drive-backup install <client-secrets>.json".format(GDRIVE_BACKUP_APP_AUTH_DIR), logging.ERROR)
-            self.abort_backup()
+            self.logLevelProgess("No client secrets file present at {0}. Please run google-drive-backup install <client-secrets>.json".format(GDRIVE_BACKUP_APP_AUTH_DIR), logging.ERROR)
+            self.abortBackup()
         
         # Perform Oauth flow
         store = Storage(user_token_file)
@@ -99,54 +68,86 @@ class Downloader():
         self.service = build('drive', "v3", self.credentials.authorize(Http(timeout=50))) #TODO: Magic Number
 
         # Get user info 
-        self.get_user()
-        self.log_level_progress(u'Drive Info:{0} {1}'.format(self.user['user']['displayName'], self.user['user']['emailAddress']), logging.INFO)
+        self.getUser()
+        self.logLevelProgess(u'Drive Info:{0} {1}'.format(self.user['user']['displayName'], self.user['user']['emailAddress']), logging.INFO)
 
         # Determine source
-        source = self.validate_source(self.args.source)
-        self.log_level_progress(u'Successfully found drive sources', logging.INFO)
+        sources = self.validateSource(self.args.source)
+        self.logLevelProgess(u'Successfully found drive sources', logging.INFO)
+
+        # Create destination directory
+        root = self.ensureDestination(self.args.destination)
+        self.logLevelProgess(u'Successfully created Google Drive Backup directory at: {0}'.format(root), logging.INFO)
 
         # Begin downloading from source
-        self.traverse_source(source)
+        self.traverseSource(sources, root)
 
-    def abort_backup(self):
+        # File compression
+        if self.args.compression:
+            self.compress(self.args.compression, root)
+
+    def abortBackup(self):
         raise Exception #TODO: For now
 
-    def get_user(self):
+    def getUser(self):
         try:
             self.user = self.service.about().get(fields="user").execute()
         except:
-            self.log_level_progress(u'Error getting user', logging.ERROR)
-            self.abort_backup()
+            self.logLevelProgess(u'Error getting user', logging.ERROR)
+            self.abortBackup()
 
-    def validate_source(self, source):
-        return self.get_source(source, "name='{0}' and trashed=false".format(source))    
+    def validateSource(self, source):
+        return self.getSource(source, "name='{0}' and trashed=false".format(source))    
+    
+    def ensureDestination(self, dest):
+        if not os.path.isabs(dest):
+            self.logLevelProgess(u'Destination: {0} is not an absolute path', logging.ERROR)
+            self.abortBackup()
+        
+        if os.path.exists(dest):
+            self.logLevelProgess(u'Destination: {0} already exists and is potentially storing a backup or some other data. In place backups are not yet supported.'.format(dest), logging.ERROR)
+            self.abortBackup()
+        os.mkdir(dest)
+        return dest
 
-    def get_source(self, source, q):
+    def getSource(self, source, q):
         if not source:
-            self.log_level_progress(u'Error: No source was provided', logging.ERROR)
-            self.abort_backup()
+            self.logLevelProgess(u'Error: No source was provided', logging.ERROR)
+            self.abortBackup()
         try:
             return self.service.files().list(q=q).execute()['files']
         except:
-            self.log_level_progress(u'Error getting source folder/file {0}'.format(source), logging.ERROR)
-            self.abort_backup()
+            self.logLevelProgess(u'Error getting source folder/file {0}'.format(source), logging.ERROR)
+            self.abortBackup()
 
-    def traverse_source(self, sources):
-        print(sources)
+    def createNextSourceDirectory(self, source, currDir):
+        # Create next folder for files to be downloaded into
+        nextDir = os.path.join(currDir, re.sub(r'[<>:"/\\\\|?*]|\.\.\Z', '-', source['name'], flags=re.IGNORECASE).strip())
+        # TODO: Support for in place backups for optimization
+        if os.path.exists(nextDir):
+            nextDir = nextDir + uuid.uuid4().hex #TODO: We can still have hash collisions here
+            self.logLevelProgess(u'Found duplicate folders at same node. Consider avoiding duplicate nodes in drive. Directory name as been changed to: {0}'.format(nextDir), logging.WARNING)
+        os.mkdir(nextDir)
+        return nextDir
+
+    def traverseSource(self, sources, directory):
+        print(directory)
         # Download files in current source directory
-        [self.download(source) for source in sources if self.isFile(source)]
+        [self.download(source, directory) for source in sources if self.isFile(source)]
         # Traverse through next directory
-        [self.traverse_source(self.get_source(source, "'{0}' in parents".format(source['id']))) for source in sources if self.isFolder(source)]
+        [self.traverseSource(self.getSource(source, "'{0}' in parents".format(source['id'])), self.createNextSourceDirectory(source, directory)) for source in sources if self.isFolder(source)]
     
-    def download(self, file):
-        self.log_level_progress('Downloading file: {0}'.format(file['name']), logging.DEBUG)
+    def download(self, file, dest):
+        pass
 
     @staticmethod
-    def log_level_progress(msg, level):
+    def compress(compression, root):
+        shutil.make_archive(root, compression, root_dir=root)
+
+    @staticmethod
+    def logLevelProgess(msg, level):
         logger = logging.getLogger(__name__)
         logger.log(level, msg)
-        print(msg)
 
     @staticmethod
     def isFile(item):
@@ -158,6 +159,6 @@ class Downloader():
     
 ''' 
     @staticmethod
-    def log_download_progess():
+    def logDownloadProgress():
         pass
 '''
