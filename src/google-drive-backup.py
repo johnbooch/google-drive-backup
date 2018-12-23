@@ -1,6 +1,3 @@
-# Activate virtual env
-import os
-os.system('/bin/bash --rcfile ../env/bin/active') # TODO: Make this generic
 # Start process under virtual env
 import os
 
@@ -49,7 +46,7 @@ def main():
     args = Parser.build_drive_parser().parse_args()
     # Start program
     d = Downloader(args)
-    d.start_backup()
+    d.startBackup()
 
 if __name__ == "__main__":
     main()
