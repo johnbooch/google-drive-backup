@@ -11,11 +11,17 @@ from oauth2client import tools
 from googleapiclient.discovery import build
 from httplib2 import Http
 
-from lib.Utilities import GDRIVE_BACKUP_APP_DIR, GDRIVE_BACKUP_APP_AUTH_DIR, GDRIVE_BACKUP_APP_LOG_DIR
+from lib.Utilities import  GDRIVE_BACKUP_APP_AUTH_DIR, GDRIVE_BACKUP_APP_LOG_DIR
+
+PROGRESS_BARS = (u' ', u'▏', u'▎', u'▍', u'▌', u'▋', u'▊', u'▉', u'█')
+
+MIME_TYPES = {
+    'folder': 'application/vnd.google-apps.folder'
+}
 
 class Downloader():
 
-    USER_AGENT = "Google-Drive-Backup-Downloader"
+    USER_AGENT = "Google-Drive-Backup"
     
     SCOPES = {
         "DRIVE": "https://www.googleapis.com/auth/drive",
@@ -23,20 +29,19 @@ class Downloader():
         "FILE": "https://www.googleapis.com/auth/drive.file"
     }
 
-    PROGRESS_BARS = (u' ', u'▏', u'▎', u'▍', u'▌', u'▋', u'▊', u'▉', u'█')
-
     def __init__(self, args):
         self.args = args
         
-        # Setup logging
-        self.setup_logging(getattr(logging, self.args.log_level.upper()))
+        # Setup logging #TODO: This does not belong here
+        self.setupLogging(getattr(logging, self.args.log_level.upper()))
 
         # Build Credentials
         self.log_level_progress("Getting Credentials", logging.INFO)
         self.buildCredentials(self.args.scope)
         self.log_level_progress("Validated Credentials", logging.INFO)
 
-    def setup_logging(self, level):
+    #TODO: This does not belong here
+    def setupLogging(self, level):
         r_logger = logging.getLogger()
         r_logger.setLevel(level)
     
@@ -88,7 +93,7 @@ class Downloader():
             flow.user_agent = Downloader.USER_AGENT
             self.credentials = tools.run_flow(flow, store)
 
-    def start_backup(self):
+    def startBackup(self):
 
         # Instantiate drive services
         self.service = build('drive', "v3", self.credentials.authorize(Http(timeout=50))) #TODO: Magic Number
@@ -96,6 +101,13 @@ class Downloader():
         # Get user info 
         self.get_user()
         self.log_level_progress(u'Drive Info:{0} {1}'.format(self.user['user']['displayName'], self.user['user']['emailAddress']), logging.INFO)
+
+        # Determine source
+        source = self.validate_source(self.args.source)
+        self.log_level_progress(u'Successfully found drive sources', logging.INFO)
+
+        # Begin downloading from source
+        self.traverse_source(source)
 
     def abort_backup(self):
         raise Exception #TODO: For now
@@ -107,41 +119,44 @@ class Downloader():
             self.log_level_progress(u'Error getting user', logging.ERROR)
             self.abort_backup()
 
+    def validate_source(self, source):
+        return self.get_source(source, "name='{0}' and trashed=false".format(source))    
+
+    def get_source(self, source, q):
+        if not source:
+            self.log_level_progress(u'Error: No source was provided', logging.ERROR)
+            self.abort_backup()
+        try:
+            return self.service.files().list(q=q).execute()['files']
+        except:
+            self.log_level_progress(u'Error getting source folder/file {0}'.format(source), logging.ERROR)
+            self.abort_backup()
+
+    def traverse_source(self, sources):
+        print(sources)
+        # Download files in current source directory
+        [self.download(source) for source in sources if self.isFile(source)]
+        # Traverse through next directory
+        [self.traverse_source(self.get_source(source, "'{0}' in parents".format(source['id']))) for source in sources if self.isFolder(source)]
+    
+    def download(self, file):
+        self.log_level_progress('Downloading file: {0}'.format(file['name']), logging.DEBUG)
+
     @staticmethod
     def log_level_progress(msg, level):
         logger = logging.getLogger(__name__)
         logger.log(level, msg)
         print(msg)
-'''    
-    def get_source_folder(self):
-        pass
-
-    def traverse_folder(self, folder):
-        pass
-
-    def download(self, file):
-        pass
-
-    def should_download(self, file, path):
-        # Check existence 
-        if not os.path.exists(path):
-            return True
-        # Check time
-        file_time = calendar.timegm(time.strptime(file['modifiedTime'], '%Y-%m-%dT%H:%M:%S.%fZ'))
-        backup_file_time = os.path.getmtime(path)
-        if file_time > backup_file_time:
-            return True
-        else:
-            return False  
 
     @staticmethod
-    def is_file(item):
-        pass
+    def isFile(item):
+        return item['mimeType'] != MIME_TYPES['folder']
 
     @staticmethod
-    def is_folder(item):
-        pass
+    def isFolder(item):
+        return item['mimeType'] == MIME_TYPES['folder']
     
+''' 
     @staticmethod
     def log_download_progess():
         pass
