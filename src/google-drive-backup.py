@@ -20,40 +20,7 @@ PROG_MSG = r'''
                      |___/                                                               |_|                
 '''
 
-
-def setupLogging(level):
-    r_logger = logging.getLogger()
-    r_logger.setLevel(level)
-
-    log_file = os.path.join(GDRIVE_BACKUP_APP_LOG_DIR, 'google-drive-backup.log')
-    log_filter = logging.Filter(name=__name__)
-    
-    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
-    file_handler.setLevel(level)
-    file_handler.addFilter(log_filter)
-
-    class CustomStreamFilter():
-        def filter(self, record):
-            if record.levelname == 'ERROR' and record.exc_info:
-                return 0
-            return 1
-
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(level)
-    stream_handler.addFilter(CustomStreamFilter())
-
-    file_formatter = logging.Formatter(u'%(asctime)s - %(name)' + u's - %(levelname)8s - %(message)s')
-    stream_formatter = logging.Formatter(u'\r%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-    file_handler.setFormatter(file_formatter)
-    stream_handler.setFormatter(stream_formatter)
-
-    r_logger.addHandler(file_handler)
-    r_logger.addHandler(stream_handler)
-
-
 def build_application_scaffold():
-
     # Create application directory in user directory
     if not os.path.exists(GDRIVE_BACKUP_APP_DIR):
         os.mkdir(GDRIVE_BACKUP_APP_DIR)
@@ -76,8 +43,6 @@ def main():
     build_application_scaffold()
     # Parse args
     args = Parser.build_drive_parser().parse_args()
-    # Setup Logging
-    setupLogging(getattr(logging, args.log_level.upper()))
     # Start program
     d = Downloader(args)
     d.startBackup()
