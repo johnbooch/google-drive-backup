@@ -1,4 +1,10 @@
-.vscode
+# Ignore application generated folders
+build/
+env/
+
+# Ignore python generated caches
 .pycache
 __pycache__/
-env/
+
+# Ignore VS Code generated folders
+.vscode
