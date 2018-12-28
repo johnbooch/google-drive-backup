@@ -211,25 +211,16 @@ class Downloader():
         # Create media downloader
         fd = io.FileIO(filePath, mode='wb')
         downloader = MediaIoBaseDownload(fd, request, chunksize=1024*1024)
-
-        # Create file download bar
-        #fileDownloadBar = DownloadProgressbar(total=100, desc= 'File Download Progress', unit='%', leave=False)
         
         @RetryOnFailure(5, logging.getLogger(__name__)) # TODO: Magic number
         def downloadChunks(*args, **kwargs):
             done = False
-            #fileDownloadBar.set_postfix(file=file['name'], refresh=True)
             while done is False:
                 progress, done = downloader.next_chunk()
-                #fileDownloadBar.updateBar(int(progress.progress())*100, 100)
-                #sleep(0.5) # Give progress bar some time to update itself
             return (progress, done)
         
         # Download
         result = downloadChunks()
-
-        # Teardown progress bar
-        #fileDownloadBar.close()
 
         # Check status
         if not result:
@@ -263,9 +254,3 @@ class Downloader():
     @staticmethod
     def isFolder(item):
         return item['mimeType'] == MIME_TYPES['folder']
-
-class DownloadProgressbar(tqdm):
-    def updateBar(self, size, totalSize):
-        if totalSize is not None:
-            self.total = totalSize
-        self.update(size - self.n)
