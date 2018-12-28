@@ -218,7 +218,7 @@ class Downloader():
         @RetryOnFailure(5, logging.getLogger(__name__)) # TODO: Magic number
         def downloadChunks(*args, **kwargs):
             done = False
-            fileDownloadBar.set_postfix(file=file['name'], refresh=True)
+            #fileDownloadBar.set_postfix(file=file['name'], refresh=True)
             while done is False:
                 progress, done = downloader.next_chunk()
                 #fileDownloadBar.updateBar(int(progress.progress())*100, 100)
